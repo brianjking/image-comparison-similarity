@@ -5,33 +5,37 @@ import pytesseract
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-import torchvision.models as models
 import torchvision.transforms as transforms
 import torch
+from efficientnet_pytorch import EfficientNet
 
 # Initialize the text embeddings model
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Initialize the pretrained ResNet50 model for image embeddings
-resnet = models.resnet50(pretrained=True)
-resnet = torch.nn.Sequential(*list(resnet.children())[:-1])
-transform = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
+# Initialize the EfficientNet B3 model for image embeddings
+efficientnet = EfficientNet.from_pretrained('efficientnet-b7')
 
 def generate_image_embedding(image):
-    # Convert RGBA images to RGB
-    if image.mode == 'RGBA':
+    # Adjust preprocessing for EfficientNet B3's expected input dimensions
+    input_size = EfficientNet.get_image_size('efficientnet-b7')
+    transform = transforms.Compose([
+        transforms.Resize(input_size, interpolation=Image.BICUBIC),
+        transforms.CenterCrop(input_size),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    
+    if image.mode != 'RGB':
         image = image.convert('RGB')
     
     image = transform(image).unsqueeze(0)
-    resnet.eval()
+    efficientnet.eval()
     with torch.no_grad():
-        embedding = resnet(image).numpy().flatten()
-    return embedding
+        # Extract features
+        features = efficientnet.extract_features(image)
+        # Pooling and flattening for embedding
+        embedding = torch.nn.functional.adaptive_avg_pool2d(features, 1).reshape(features.shape[0], -1)
+    return embedding.numpy().flatten()
 
 def main():
     st.title("Duplicate Document Detector")
@@ -56,8 +60,8 @@ def main():
         image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
 
         # Weighted combination of scores
-        text_weight = 0.5  # Adjust these weights as needed
-        image_weight = 0.5
+        text_weight = 0.9  # Adjust these weights as needed
+        image_weight = 0.1
         total_similarity = (text_sim * text_weight) + (image_sim * image_weight)
 
         # Display OCR'ed text
