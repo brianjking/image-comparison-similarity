@@ -51,17 +51,25 @@ def main():
         sentence_vector1, sentence_vector2 = model.encode([text1])[0], model.encode([text2])[0]
         image_embedding1, image_embedding2 = generate_image_embedding(image1), generate_image_embedding(image2)
 
+        # Calculate similarity scores
+        text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
+        image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
+
+        # Weighted combination of scores
+        text_weight = 0.5  # Adjust these weights as needed
+        image_weight = 0.5
+        total_similarity = (text_sim * text_weight) + (image_sim * image_weight)
+
         # Display OCR'ed text
         with st.expander("Extracted Text from Images"):
             st.text_area("Text from First Image:", text1, height=150)
             st.text_area("Text from Second Image:", text2, height=150)
 
         # Display similarity scores
-        text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
-        image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
         st.write("Similarity Scores:")
         st.metric(label="Text Similarity", value=f"{text_sim*100:.2f}%")
         st.metric(label="Image Similarity", value=f"{image_sim*100:.2f}%")
+        st.metric(label="Total Similarity", value=f"{total_similarity*100:.2f}%")
 
 if __name__ == "__main__":
     main()
