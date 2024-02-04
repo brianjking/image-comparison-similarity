@@ -1,0 +1,10 @@
+streamlit
+Pillow
+boto3
+sentence-transformers
+numpy
+scikit-learn
+efficientnet_pytorch
+torchvision
+torch
+

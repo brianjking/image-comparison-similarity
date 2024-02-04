@@ -33,7 +33,13 @@ def generate_image_embedding(image):
     return embedding.numpy().flatten()
 
 def extract_text_with_layout_analysis(image_bytes):
-    client = boto3.client('textract', region_name='us-east-1')
+    # Utilize AWS credentials from Streamlit secrets
+    client = boto3.client(
+        'textract',
+        aws_access_key_id=st.secrets["aws_access_key_id"],
+        aws_secret_access_key=st.secrets["aws_secret_access_key"],
+        region_name=st.secrets["region_name"]
+    )
     response = client.analyze_document(Document={'Bytes': image_bytes}, FeatureTypes=['TABLES', 'FORMS'])
     
     layout_data = []
@@ -59,8 +65,6 @@ def main():
         layout_data1 = extract_text_with_layout_analysis(img_data1)
         layout_data2 = extract_text_with_layout_analysis(img_data2)
         
-        # This example just shows how you might begin to use layout data
-        # For simplicity, we concatenate texts for similarity analysis
         text1 = '\n'.join([item['text'] for item in layout_data1])
         text2 = '\n'.join([item['text'] for item in layout_data2])
         
