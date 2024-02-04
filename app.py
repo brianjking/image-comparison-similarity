@@ -16,7 +16,7 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 efficientnet = EfficientNet.from_pretrained('efficientnet-b7')
 
 def generate_image_embedding(image):
-    input_size = EfficientNet.get_image_size('efficientnet-b7')  # Adjust for EfficientNet B7
+    input_size = EfficientNet.get_image_size('efficientnet-b7')
     transform = transforms.Compose([
         transforms.Resize(input_size, interpolation=Image.BICUBIC),
         transforms.CenterCrop(input_size),
@@ -32,17 +32,17 @@ def generate_image_embedding(image):
         embedding = torch.nn.functional.adaptive_avg_pool2d(features, 1).reshape(features.shape[0], -1)
     return embedding.numpy().flatten()
 
-# Define the function to extract text using Amazon Textract
-def extract_text_with_textract(image_bytes):
-    client = boto3.client('textract', region_name='us-east-1')  # Make sure to specify your region correctly
-    response = client.analyze_document(Document={'Bytes': image_bytes}, FeatureTypes=['FORMS'])
+def extract_text_with_layout_analysis(image_bytes):
+    client = boto3.client('textract', region_name='us-east-1')
+    response = client.analyze_document(Document={'Bytes': image_bytes}, FeatureTypes=['TABLES', 'FORMS'])
     
-    # Parsing the response to extract text
-    text = ''
+    layout_data = []
     for item in response['Blocks']:
-        if item['BlockType'] == 'LINE':
-            text += item['Text'] + '\n'
-    return text
+        if item['BlockType'] in ['LINE', 'WORD']:
+            text = item.get('Text', '')
+            bounding_box = item.get('Geometry', {}).get('BoundingBox', {})
+            layout_data.append({'text': text, 'bounding_box': bounding_box})
+    return layout_data
 
 def main():
     st.title("Duplicate Document Detector")
@@ -56,9 +56,13 @@ def main():
 
         image1, image2 = Image.open(io.BytesIO(img_data1)), Image.open(io.BytesIO(img_data2))
         
-        # Use Amazon Textract for OCR
-        text1 = extract_text_with_textract(img_data1)
-        text2 = extract_text_with_textract(img_data2)
+        layout_data1 = extract_text_with_layout_analysis(img_data1)
+        layout_data2 = extract_text_with_layout_analysis(img_data2)
+        
+        # This example just shows how you might begin to use layout data
+        # For simplicity, we concatenate texts for similarity analysis
+        text1 = '\n'.join([item['text'] for item in layout_data1])
+        text2 = '\n'.join([item['text'] for item in layout_data2])
         
         sentence_vector1, sentence_vector2 = model.encode([text1])[0], model.encode([text2])[0]
         image_embedding1, image_embedding2 = generate_image_embedding(image1), generate_image_embedding(image2)
@@ -70,9 +74,9 @@ def main():
         image_weight = 0.5
         total_similarity = (text_sim * text_weight) + (image_sim * image_weight)
 
-        with st.expander("Extracted Text from Images"):
-            st.text_area("Text from First Image:", text1, height=150)
-            st.text_area("Text from Second Image:", text2, height=150)
+        with st.expander("Extracted Text and Layout from Images"):
+            st.text_area("Text and Layout from First Image:", str(layout_data1), height=150)
+            st.text_area("Text and Layout from Second Image:", str(layout_data2), height=150)
 
         st.write("Similarity Scores:")
         st.metric(label="Text Similarity", value=f"{text_sim*100:.2f}%")
