@@ -12,11 +12,11 @@ import torch
 # Initialize the text embeddings model
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Initialize the EfficientNet B7 model for image embeddings
-efficientnet = EfficientNet.from_pretrained('efficientnet-b7')
+# Initialize the EfficientNet B1 model for image embeddings
+efficientnet = EfficientNet.from_pretrained('efficientnet-b1')
 
 def generate_image_embedding(image):
-    input_size = EfficientNet.get_image_size('efficientnet-b7')
+    input_size = EfficientNet.get_image_size('efficientnet-b1')
     transform = transforms.Compose([
         transforms.Resize(input_size, interpolation=Image.BICUBIC),
         transforms.CenterCrop(input_size),
