@@ -8,22 +8,27 @@ import requests
 import torchvision.transforms as transforms
 import torch
 from efficientnet_pytorch import EfficientNet
+import time  # Importing time module for sleep functionality
 
 def generate_text_embedding(text):
-    # Use Hugging Face API for text embeddings
     api_url = st.secrets["hugging_face_text_endpoint_url"]
     headers = {"Authorization": f"Bearer {st.secrets['hugging_face_api_key']}"}
     payload = {"inputs": text}
     
-    response = requests.post(api_url, headers=headers, json=payload)
-    response.raise_for_status()  # Check for request errors
-    embeddings = response.json()
-    
-    embedding = np.array(embeddings[0]) if isinstance(embeddings, list) and len(embeddings) > 0 else None
-    return embedding
+    for attempt in range(3):  # Retry mechanism for up to 3 attempts
+        try:
+            response = requests.post(api_url, headers=headers, json=payload)
+            response.raise_for_status()  # This will raise an exception for HTTP errors
+            embeddings = response.json()
+            embedding = np.array(embeddings[0]) if isinstance(embeddings, list) and len(embeddings) > 0 else None
+            return embedding
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 503 and attempt < 2:  # If 503 error and not the last attempt - deals with waking the endpoint up from sleep.
+                time.sleep(60)  # Wait for 60 seconds before retrying
+            else:
+                raise  # Reraise the last exception if not 503 or if it's the last attempt
 
 def generate_image_embedding(image):
-    # Local processing for image embeddings using EfficientNet-B7
     efficientnet = EfficientNet.from_pretrained('efficientnet-b1')
     input_size = EfficientNet.get_image_size('efficientnet-b1')
     transform = transforms.Compose([
@@ -33,7 +38,7 @@ def generate_image_embedding(image):
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     if image.mode != 'RGB':
-        image = image.convert('RGB')  # Convert RGBA to RGB
+        image = image.convert('RGB')
     image = transform(image).unsqueeze(0)
     efficientnet.eval()
     with torch.no_grad():
