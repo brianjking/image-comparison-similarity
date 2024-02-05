@@ -5,32 +5,33 @@ import boto3
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from efficientnet_pytorch import EfficientNet
+import requests  # For making HTTP requests to the Hugging Face Inference API
 import torchvision.transforms as transforms
 import torch
 
 # Initialize the text embeddings model
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Initialize the EfficientNet B7 model for image embeddings
-efficientnet = EfficientNet.from_pretrained('efficientnet-b7')
-
 def generate_image_embedding(image):
-    input_size = EfficientNet.get_image_size('efficientnet-b7')
-    transform = transforms.Compose([
-        transforms.Resize(input_size, interpolation=Image.BICUBIC),
-        transforms.CenterCrop(input_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    if image.mode != 'RGB':
-        image = image.convert('RGB')
-    image = transform(image).unsqueeze(0)
-    efficientnet.eval()
-    with torch.no_grad():
-        features = efficientnet.extract_features(image)
-        embedding = torch.nn.functional.adaptive_avg_pool2d(features, 1).reshape(features.shape[0], -1)
-    return embedding.numpy().flatten()
+    # Convert PIL Image to byte array to send to Hugging Face Inference API
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format=image.format)
+    img_byte_arr = img_byte_arr.getvalue()
+    
+    # Use the Hugging Face API key and endpoint URL from Streamlit secrets
+    headers = {"Authorization": f"Bearer {st.secrets['hugging_face_api_key']}"}
+    api_url = st.secrets["hugging_face_endpoint_url"]  # Ensure this matches your secrets.toml entry
+    
+    response = requests.post(api_url, headers=headers, files={"file": img_byte_arr})
+    response.raise_for_status()  # Raises an exception for HTTP error responses
+    
+    # Extract the embedding from the response
+    embedding = response.json()
+    
+    # Convert embedding to the required format (e.g., numpy array)
+    embedding = np.array(embedding)
+    
+    return embedding.flatten()
 
 def extract_text_with_layout_analysis(image_bytes):
     # Utilize AWS credentials from Streamlit secrets
