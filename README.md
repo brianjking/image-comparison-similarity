@@ -10,3 +10,9 @@
 
 
 
+### To Do
+
+- [ ] Look into https://aws.amazon.com/augmented-ai/features/ & https://aws.amazon.com/augmented-ai/pricing/
+- [ ] Add storage of embeddings
+- [ ] Deal with the chunking issue with embeddings
+- [ ] Move to actual CE integration
