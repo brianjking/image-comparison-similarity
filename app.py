@@ -7,10 +7,13 @@ from sklearn.metrics.pairwise import cosine_similarity
 import requests
 import torchvision.transforms as transforms
 import torch
-from efficientnet_pytorch import EfficientNet
-import time
+from transformers import CLIPProcessor, CLIPModel
 
-def split_text(text, max_length=1024):  # Rough estimate for 512 tokens
+# Initialize CLIP model and processor globally
+clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+
+def split_text(text, max_length=1024):
     """Splits the text into chunks that are at most `max_length` characters long."""
     return [text[i:i+max_length] for i in range(0, len(text), max_length)]
 
@@ -39,23 +42,11 @@ def generate_text_embedding(text):
         st.error("Failed to generate text embeddings for any document segment.")
         return None
 
-def generate_image_embedding(image):
-    efficientnet = EfficientNet.from_pretrained('efficientnet-b1')
-    input_size = EfficientNet.get_image_size('efficientnet-b1')
-    transform = transforms.Compose([
-        transforms.Resize(input_size, interpolation=Image.BICUBIC),
-        transforms.CenterCrop(input_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    if image.mode != 'RGB':
-        image = image.convert('RGB')
-    image = transform(image).unsqueeze(0)
-    efficientnet.eval()
-    with torch.no_grad():
-        features = efficientnet.extract_features(image)
-        embedding = torch.nn.functional.adaptive_avg_pool2d(features, 1).reshape(features.shape[0], -1)
-    return embedding.numpy().flatten()
+def generate_clip_image_embedding(image):
+    inputs = clip_processor(images=image, return_tensors="pt", padding=True)
+    outputs = clip_model(**inputs)
+    image_embeddings = outputs.image_embeds
+    return image_embeddings.detach().numpy().flatten()
 
 def extract_text(image_bytes):
     client = boto3.client(
@@ -85,10 +76,11 @@ def main():
         sentence_vector2 = generate_text_embedding(text2)
         
         if sentence_vector1 is None or sentence_vector2 is None:
-            return  # Stop further execution if embedding generation failed
+            st.error("Failed to generate embeddings.")
+            return
         
-        image_embedding1 = generate_image_embedding(image1)
-        image_embedding2 = generate_image_embedding(image2)
+        image_embedding1 = generate_clip_image_embedding(image1)
+        image_embedding2 = generate_clip_image_embedding(image2)
 
         text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
         image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
