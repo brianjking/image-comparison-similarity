@@ -8,7 +8,7 @@ import requests
 import torchvision.transforms as transforms
 import torch
 from efficientnet_pytorch import EfficientNet
-import time  # Importing time module for sleep functionality
+import time
 
 def generate_text_embedding(text):
     api_url = st.secrets["hugging_face_text_endpoint_url"]
@@ -23,7 +23,7 @@ def generate_text_embedding(text):
             embedding = np.array(embeddings[0]) if isinstance(embeddings, list) and len(embeddings) > 0 else None
             return embedding
         except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 503 and attempt < 2:  # If 503 error and not the last attempt - deals with waking the endpoint up from sleep.
+            if e.response.status_code == 503 and attempt < 2:  # If 503 error and not the last attempt
                 time.sleep(60)  # Wait for 60 seconds before retrying
             else:
                 raise  # Reraise the last exception if not 503 or if it's the last attempt
@@ -46,21 +46,16 @@ def generate_image_embedding(image):
         embedding = torch.nn.functional.adaptive_avg_pool2d(features, 1).reshape(features.shape[0], -1)
     return embedding.numpy().flatten()
 
-def extract_text_with_layout_analysis(image_bytes):
+def extract_text(image_bytes):
     client = boto3.client(
         'textract',
         aws_access_key_id=st.secrets["aws_access_key_id"],
         aws_secret_access_key=st.secrets["aws_secret_access_key"],
         region_name=st.secrets["region_name"]
     )
-    response = client.analyze_document(Document={'Bytes': image_bytes}, FeatureTypes=['TABLES', 'FORMS'])
-    layout_data = []
-    for item in response['Blocks']:
-        if item['BlockType'] in ['LINE', 'WORD']:
-            text = item.get('Text', '')
-            bounding_box = item.get('Geometry', {}).get('BoundingBox', {})
-            layout_data.append({'text': text, 'bounding_box': bounding_box})
-    return layout_data
+    response = client.detect_document_text(Document={'Bytes': image_bytes})
+    text_data = [item.get('Text', '') for item in response['Blocks'] if item['BlockType'] == 'LINE']
+    return '\n'.join(text_data)
 
 def main():
     st.title("Duplicate Document Detector")
@@ -72,11 +67,8 @@ def main():
         st.image([img_data1, img_data2], caption=['First Image', 'Second Image'], width=300)
         image1, image2 = Image.open(io.BytesIO(img_data1)), Image.open(io.BytesIO(img_data2))
         
-        layout_data1 = extract_text_with_layout_analysis(img_data1)
-        layout_data2 = extract_text_with_layout_analysis(img_data2)
-        
-        text1 = '\n'.join([item['text'] for item in layout_data1])
-        text2 = '\n'.join([item['text'] for item in layout_data2])
+        text1 = extract_text(img_data1)
+        text2 = extract_text(img_data2)
         
         sentence_vector1 = generate_text_embedding(text1)
         sentence_vector2 = generate_text_embedding(text2)
@@ -90,9 +82,9 @@ def main():
         image_weight = 0.1
         total_similarity = (text_sim * text_weight) + (image_sim * image_weight)
 
-        with st.expander("Extracted Text and Layout from Images"):
-            st.text_area("Text and Layout from First Image:", str(layout_data1), height=150)
-            st.text_area("Text and Layout from Second Image:", str(layout_data2), height=150)
+        with st.expander("Extracted Text from Images"):
+            st.text_area("Text from First Image:", text1, height=150)
+            st.text_area("Text from Second Image:", text2, height=150)
 
         st.write("Similarity Scores:")
         st.metric(label="Text Similarity", value=f"{text_sim*100:.2f}%")
