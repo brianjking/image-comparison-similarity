@@ -10,16 +10,15 @@ import torch
 from efficientnet_pytorch import EfficientNet
 import time
 
+def split_text(text, max_length=1024):  # Rough estimate for 512 tokens
+    """Splits the text into chunks that are at most `max_length` characters long."""
+    return [text[i:i+max_length] for i in range(0, len(text), max_length)]
+
 def generate_text_embedding(text):
     api_url = st.secrets["hugging_face_text_endpoint_url"]
     headers = {"Authorization": f"Bearer {st.secrets['hugging_face_api_key']}"}
-    # More conservative estimate: Adjust based on your tokenizer's average characters per token
-    estimated_avg_chars_per_token = 3  # Adjust based on your observations
-    max_tokens = 16384  # Hugging Face's token limit per call
-    max_chars = max_tokens * estimated_avg_chars_per_token  # Adjusted max characters
-
-    chunks = [text[i:i+max_chars] for i in range(0, len(text), max_chars)]
     
+    chunks = split_text(text)
     all_embeddings = []
     for chunk in chunks:
         payload = {"inputs": chunk}
@@ -28,22 +27,16 @@ def generate_text_embedding(text):
             response.raise_for_status()
             chunk_embeddings = response.json()
             if isinstance(chunk_embeddings, list) and len(chunk_embeddings) > 0:
-                all_embeddings.extend(chunk_embeddings)
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 413:
-                st.error("Error: A document segment is too large to process. Please try shorter text.")
-                return None
-            else:
-                st.error(f"An HTTP error occurred: {e}")
-                return None
-        except Exception as e:
-            st.error(f"An unexpected error occurred: {e}")
+                all_embeddings.append(np.array(chunk_embeddings[0]))
+        except requests.exceptions.RequestException as e:
+            st.error(f"Failed to process a text segment due to: {str(e)}")
             return None
     
     if all_embeddings:
-        combined_embedding = np.mean(np.array(all_embeddings), axis=0)
+        combined_embedding = np.mean(all_embeddings, axis=0)
         return combined_embedding
     else:
+        st.error("Failed to generate text embeddings for any document segment.")
         return None
 
 def generate_image_embedding(image):
@@ -92,7 +85,6 @@ def main():
         sentence_vector2 = generate_text_embedding(text2)
         
         if sentence_vector1 is None or sentence_vector2 is None:
-            st.error("Failed to generate text embeddings for comparison.")
             return  # Stop further execution if embedding generation failed
         
         image_embedding1 = generate_image_embedding(image1)
