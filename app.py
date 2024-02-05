@@ -13,20 +13,36 @@ import time
 def generate_text_embedding(text):
     api_url = st.secrets["hugging_face_text_endpoint_url"]
     headers = {"Authorization": f"Bearer {st.secrets['hugging_face_api_key']}"}
-    payload = {"inputs": text}
+    # Assuming an average of 4 chars per token as a simple heuristic
+    max_chars = 16384 * 4  # Adjust based on your observation or tokenization logic
+    chunks = [text[i:i+max_chars] for i in range(0, len(text), max_chars)]
     
-    for attempt in range(3):  # Retry mechanism for up to 3 attempts
+    embeddings = []
+    for chunk in chunks:
+        payload = {"inputs": chunk}
         try:
             response = requests.post(api_url, headers=headers, json=payload)
             response.raise_for_status()  # This will raise an exception for HTTP errors
-            embeddings = response.json()
-            embedding = np.array(embeddings[0]) if isinstance(embeddings, list) and len(embeddings) > 0 else None
-            return embedding
+            chunk_embeddings = response.json()
+            if isinstance(chunk_embeddings, list) and len(chunk_embeddings) > 0:
+                embeddings.extend(chunk_embeddings)
         except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 503 and attempt < 2:  # If 503 error and not the last attempt
-                time.sleep(60)  # Wait for 60 seconds before retrying
+            if e.response.status_code == 413:
+                st.error("Error: A document segment is too large to process. Please try shorter text.")
+                return None
             else:
-                raise  # Reraise the last exception if not 503 or if it's the last attempt
+                st.error(f"An HTTP error occurred: {e}")
+                return None
+        except Exception as e:
+            st.error(f"An unexpected error occurred: {e}")
+            return None
+    
+    if embeddings:
+        # Here you may adjust how to aggregate embeddings from chunks, e.g., averaging
+        combined_embedding = np.mean(np.array(embeddings), axis=0)
+        return combined_embedding
+    else:
+        return None
 
 def generate_image_embedding(image):
     efficientnet = EfficientNet.from_pretrained('efficientnet-b1')
@@ -72,6 +88,10 @@ def main():
         
         sentence_vector1 = generate_text_embedding(text1)
         sentence_vector2 = generate_text_embedding(text2)
+        if sentence_vector1 is None or sentence_vector2 is None:
+            st.error("Failed to generate text embeddings for comparison.")
+            return
+        
         image_embedding1 = generate_image_embedding(image1)
         image_embedding2 = generate_image_embedding(image2)
 
