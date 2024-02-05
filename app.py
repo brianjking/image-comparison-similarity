@@ -13,19 +13,22 @@ import time
 def generate_text_embedding(text):
     api_url = st.secrets["hugging_face_text_endpoint_url"]
     headers = {"Authorization": f"Bearer {st.secrets['hugging_face_api_key']}"}
-    # Assuming an average of 4 chars per token as a simple heuristic
-    max_chars = 16384 * 4  # Adjust based on your observation or tokenization logic
+    # More conservative estimate: Adjust based on your tokenizer's average characters per token
+    estimated_avg_chars_per_token = 3  # Adjust based on your observations
+    max_tokens = 16384  # Hugging Face's token limit per call
+    max_chars = max_tokens * estimated_avg_chars_per_token  # Adjusted max characters
+
     chunks = [text[i:i+max_chars] for i in range(0, len(text), max_chars)]
     
-    embeddings = []
+    all_embeddings = []
     for chunk in chunks:
         payload = {"inputs": chunk}
         try:
             response = requests.post(api_url, headers=headers, json=payload)
-            response.raise_for_status()  # This will raise an exception for HTTP errors
+            response.raise_for_status()
             chunk_embeddings = response.json()
             if isinstance(chunk_embeddings, list) and len(chunk_embeddings) > 0:
-                embeddings.extend(chunk_embeddings)
+                all_embeddings.extend(chunk_embeddings)
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 413:
                 st.error("Error: A document segment is too large to process. Please try shorter text.")
@@ -37,9 +40,8 @@ def generate_text_embedding(text):
             st.error(f"An unexpected error occurred: {e}")
             return None
     
-    if embeddings:
-        # Here you may adjust how to aggregate embeddings from chunks, e.g., averaging
-        combined_embedding = np.mean(np.array(embeddings), axis=0)
+    if all_embeddings:
+        combined_embedding = np.mean(np.array(all_embeddings), axis=0)
         return combined_embedding
     else:
         return None
@@ -88,9 +90,10 @@ def main():
         
         sentence_vector1 = generate_text_embedding(text1)
         sentence_vector2 = generate_text_embedding(text2)
+        
         if sentence_vector1 is None or sentence_vector2 is None:
             st.error("Failed to generate text embeddings for comparison.")
-            return
+            return  # Stop further execution if embedding generation failed
         
         image_embedding1 = generate_image_embedding(image1)
         image_embedding2 = generate_image_embedding(image2)
