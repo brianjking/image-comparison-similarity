@@ -93,8 +93,8 @@ def main():
         text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
         image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
 
-        text_weight = 0.9
-        image_weight = 0.1
+        text_weight = 0.8
+        image_weight = 0.2
         total_similarity = (text_sim * text_weight) + (image_sim * image_weight)
 
         with st.expander("Extracted Text from Images"):
