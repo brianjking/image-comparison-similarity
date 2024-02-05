@@ -13,6 +13,10 @@ import torch
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def generate_image_embedding(image):
+    # Convert PIL Image to RGB if it's in RGBA mode to remove the alpha channel
+    if image.mode == 'RGBA':
+        image = image.convert('RGB')
+    
     # Convert PIL Image to byte array to send as binary data
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='JPEG')  # Save image as JPEG to byte array
