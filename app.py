@@ -5,7 +5,7 @@ import boto3
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-import requests  # For making HTTP requests to the Hugging Face Inference API
+import requests
 import torchvision.transforms as transforms
 import torch
 
@@ -13,16 +13,23 @@ import torch
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def generate_image_embedding(image):
-    # Convert PIL Image to byte array to send to Hugging Face Inference API
+    # Convert PIL Image to byte array to send as binary data
     img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format=image.format)
-    img_byte_arr = img_byte_arr.getvalue()
+    image.save(img_byte_arr, format='JPEG')  # Save image as JPEG to byte array
+    img_byte_arr = img_byte_arr.getvalue()  # Get binary data
     
-    # Use the Hugging Face API key and endpoint URL from Streamlit secrets
-    headers = {"Authorization": f"Bearer {st.secrets['hugging_face_api_key']}"}
-    api_url = st.secrets["hugging_face_endpoint_url"]  # Ensure this matches your secrets.toml entry
+    # Set up headers with the Hugging Face API key from Streamlit secrets
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {st.secrets['hugging_face_api_key']}",
+        "Content-Type": "image/jpeg"
+    }
     
-    response = requests.post(api_url, headers=headers, files={"file": img_byte_arr})
+    # Use the provided endpoint URL from Streamlit secrets
+    api_url = st.secrets["hugging_face_endpoint_url"]
+    
+    # Make the POST request to the Hugging Face Inference API
+    response = requests.post(api_url, headers=headers, data=img_byte_arr)
     response.raise_for_status()  # Raises an exception for HTTP error responses
     
     # Extract the embedding from the response
