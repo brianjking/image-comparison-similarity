@@ -9,9 +9,9 @@ import torchvision.transforms as transforms
 import torch
 from transformers import CLIPProcessor, CLIPModel
 
-# Initialize CLIP model and processor globally
-clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+# Initialize CLIP model and processor for image embeddings
 clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 
 def split_text(text, max_length=1024):
     """Splits the text into chunks that are at most `max_length` characters long."""
@@ -43,10 +43,14 @@ def generate_text_embedding(text):
         return None
 
 def generate_clip_image_embedding(image):
-    inputs = clip_processor(images=image, return_tensors="pt", padding=True)
+    # Process the image through the CLIP processor to get the input ready for the model
+    inputs = clip_processor(images=image, return_tensors="pt")
+    
+    # Forward pass through the CLIP model to get the image embeddings
     outputs = clip_model(**inputs)
-    image_embeddings = outputs.image_embeds
-    return image_embeddings.detach().numpy().flatten()
+    image_embeddings = outputs.image_embeds.detach().cpu().numpy().flatten()
+    
+    return image_embeddings
 
 def extract_text(image_bytes):
     client = boto3.client(
@@ -76,8 +80,8 @@ def main():
         sentence_vector2 = generate_text_embedding(text2)
         
         if sentence_vector1 is None or sentence_vector2 is None:
-            st.error("Failed to generate embeddings.")
-            return
+            st.error("Failed to generate text embeddings.")
+            return  # Stop further execution if embedding generation failed
         
         image_embedding1 = generate_clip_image_embedding(image1)
         image_embedding2 = generate_clip_image_embedding(image2)
