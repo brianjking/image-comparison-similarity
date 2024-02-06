@@ -95,8 +95,8 @@ def main():
     st.title("Duplicate Document Detector")
     
     # Initialize or load FAISS indexes
-    text_index = init_or_load_faiss_index("text_index.faiss")
-    image_index = init_or_load_faiss_index("image_index.faiss")
+    text_index = init_or_load_faiss_index("text_index.faiss", embedding_dim=768) # Adjusted embedding_dim to match Hugging Face model output
+    image_index = init_or_load_faiss_index("image_index.faiss", embedding_dim=1280) # Adjusted embedding_dim to match EfficientNet-b1 output
     
     uploaded_file1 = st.file_uploader("Choose the first image...", type=["jpg", "png"])
     uploaded_file2 = st.file_uploader("Choose the second image...", type=["jpg", "png"])
@@ -117,8 +117,9 @@ def main():
         image_embedding2 = generate_image_embedding(image2)
         
         # Add embeddings to FAISS indexes and save
-        add_to_faiss_index(text_index, sentence_vector1 if sentence_vector1 is not None else np.zeros((1, 512)))
-        add_to_faiss_index(text_index, sentence_vector2 if sentence_vector2 is not None else np.zeros((1, 512)))
+        if sentence_vector1 is not None and sentence_vector2 is not None:
+            add_to_faiss_index(text_index, sentence_vector1)
+            add_to_faiss_index(text_index, sentence_vector2)
         add_to_faiss_index(image_index, image_embedding1)
         add_to_faiss_index(image_index, image_embedding2)
         save_faiss_index(text_index, "text_index.faiss")
