@@ -12,6 +12,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 import os
 import json  # For saving and loading the mapping
 
+# Global dictionary for index-to-text mapping
+index_to_text = {}
+
 # Constants for embedding dimensions
 TEXT_EMBEDDING_DIM = 384  # all-MiniLM-L6 model output dimension
 IMAGE_EMBEDDING_DIM = 1280  # EfficientNet-b1 output dimension
@@ -116,66 +119,50 @@ def extract_text(image_bytes):
     return '\n'.join(text_data)
 
 def main():
+    global index_to_text  # Reference the global variable
     st.title("Duplicate Document Detector")
-    
-    # Initialize or load the FAISS index for text and image embeddings
-    text_index = init_or_load_faiss_index("text_index.faiss", TEXT_EMBEDDING_DIM)
-    image_index = init_or_load_faiss_index("image_index.faiss", IMAGE_EMBEDDING_DIM)
-    
-    # Load existing index-to-text mapping
+
+    # Load existing index-to-text mapping or initialize it
     load_index_to_text_mapping("index_to_text.json")
 
-    # File uploaders for the two images to be compared
+    text_index = init_or_load_faiss_index("text_index.faiss", TEXT_EMBEDDING_DIM)
+    image_index = init_or_load_faiss_index("image_index.faiss", IMAGE_EMBEDDING_DIM)
+
     uploaded_file1 = st.file_uploader("Choose the first image...", type=["jpg", "png"])
     uploaded_file2 = st.file_uploader("Choose the second image...", type=["jpg", "png"])
 
     if uploaded_file1 and uploaded_file2:
         img_data1, img_data2 = uploaded_file1.read(), uploaded_file2.read()
         st.image([img_data1, img_data2], caption=['First Image', 'Second Image'], width=300)
-        
-        # Process the uploaded images
+
         image1, image2 = Image.open(io.BytesIO(img_data1)), Image.open(io.BytesIO(img_data2))
-        
-        # Extract text from images using AWS Textract
         text1 = extract_text(img_data1)
         text2 = extract_text(img_data2)
-        
-        # Generate text embeddings
         sentence_vector1 = generate_text_embedding(text1)
         sentence_vector2 = generate_text_embedding(text2)
-        
-        # Generate image embeddings
         image_embedding1 = generate_image_embedding(image1)
         image_embedding2 = generate_image_embedding(image2)
-        
-        # Prepare index_id for new entries
-        next_index_id = str(len(index_to_text))  # Unique ID for each new entry
 
-        # Add embeddings and their texts to their respective FAISS indices
+        # Use the length of index_to_text to generate unique index IDs
+        next_index_id = str(len(index_to_text))
         add_to_faiss_index(text_index, sentence_vector1, text1, next_index_id)
-        # Increment next_index_id for the next entry
-        next_index_id = str(int(next_index_id) + 1)  # Prepare the next index ID
-        add_to_faiss_index(image_index, image_embedding1, "Image data or description", next_index_id)
         
-        # Search the FAISS index for similar documents
+        next_index_id = str(int(next_index_id) + 1)
+        add_to_faiss_index(image_index, image_embedding1, "", next_index_id)  # Assuming you want to track image embeddings differently
+
         distances, indices = search_faiss_index(text_index, sentence_vector1, k=5)
-        
-        # Display the original texts for the top matching hits
+
         st.write("Top 5 Matching Documents:")
         for idx in indices[0]:
-            original_text = index_to_text.get(str(idx), f"Text not found for index: {idx}")
+            original_text = index_to_text.get(str(idx), "Text not found for index: " + str(idx))
             st.write(f"Index: {idx}, Original Text: {original_text}")
 
-        # Calculate similarity scores
         text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
         image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
-        
-        # Weigh the similarities to calculate a total similarity score
         text_weight = 0.8
         image_weight = 0.2
         total_similarity = (text_sim * text_weight) + (image_sim * image_weight)
-        
-        # Display extracted text and similarity scores
+
         with st.expander("Extracted Text from Images"):
             st.text_area("Text from First Image:", text1, height=150)
             st.text_area("Text from Second Image:", text2, height=150)
@@ -192,4 +179,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
