@@ -8,3 +8,4 @@ efficientnet_pytorch
 torchvision
 torch
 transformers
+faiss-cpu
