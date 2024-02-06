@@ -3,7 +3,6 @@ from PIL import Image
 import io
 import boto3
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
 import requests
 import torchvision.transforms as transforms
 import torch
@@ -17,28 +16,28 @@ IMAGE_EMBEDDING_DIM = 1280  # EfficientNet-b1 output dimension
 
 def init_or_load_faiss_index(index_path, embedding_dim):
     if os.path.exists(index_path):
-        return faiss.read_index(index_path)
+        index = faiss.read_index(index_path)
     else:
-        index = faiss.IndexFlatL2(embedding_dim)
-        return index
+        index = faiss.IndexFlatIP(embedding_dim)  # Use IndexFlatIP for cosine similarity
+    return index
+
+def normalize_embeddings(embeddings):
+    faiss.normalize_L2(embeddings)  # Normalize embeddings for cosine similarity
+    return embeddings
 
 def add_to_faiss_index(index, embeddings):
+    embeddings = normalize_embeddings(embeddings)  # Ensure embeddings are normalized
     if embeddings.ndim == 1:
         embeddings = np.expand_dims(embeddings, axis=0)
-    index.add(embeddings.astype('float32'))
+    index.add(embeddings)
 
 def save_faiss_index(index, index_path):
     faiss.write_index(index, index_path)
 
 def search_faiss_index(index, query_embedding, k=5):
-    query_embedding = np.expand_dims(query_embedding, axis=0).astype('float32')
+    query_embedding = normalize_embeddings(np.expand_dims(query_embedding, axis=0))
     distances, indices = index.search(query_embedding, k)
     return distances, indices
-
-def distance_to_similarity(distances):
-    distances = np.maximum(distances, 0)
-    similarity_scores = np.exp(-distances)  # Exponential decay
-    return np.mean(similarity_scores) * 100  # Convert to percentage
 
 def split_text(text, max_length=1024):
     return [text[i:i+max_length] for i in range(0, len(text), max_length)]
@@ -124,7 +123,8 @@ def main():
         add_to_faiss_index(image_index, image_embedding1)
         
         distances, _ = search_faiss_index(text_index, sentence_vector1, k=5)
-        faiss_text_comparison_score = distance_to_similarity(distances)
+        # Convert distances to a similarity score, for example, using 1-distance, or another method
+        faiss_text_comparison_score = np.mean(1 - distances)
         
         text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
         image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
@@ -141,7 +141,7 @@ def main():
         st.metric(label="Text Similarity", value=f"{text_sim*100:.2f}%")
         st.metric(label="Image Similarity", value=f"{image_sim*100:.2f}%")
         st.metric(label="Total Similarity", value=f"{total_similarity*100:.2f}%")
-        st.metric(label="FAISS Text Comparison", value=f"{faiss_text_comparison_score:.2f}%")
+        st.metric(label="FAISS Text Comparison", value=f"{faiss_text_comparison_score*100:.2f}%")
 
         save_faiss_index(text_index, "text_index.faiss")
         save_faiss_index(image_index, "image_index.faiss")
