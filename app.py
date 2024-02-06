@@ -35,6 +35,11 @@ def search_faiss_index(index, query_embedding, k=5):
     distances, indices = index.search(query_embedding, k)
     return distances, indices
 
+def distance_to_similarity(distances):
+    distances = np.maximum(distances, 0)
+    similarity_scores = np.exp(-distances)  # Exponential decay
+    return np.mean(similarity_scores) * 100  # Convert to percentage
+
 def split_text(text, max_length=1024):
     return [text[i:i+max_length] for i in range(0, len(text), max_length)]
 
@@ -118,9 +123,8 @@ def main():
         add_to_faiss_index(text_index, sentence_vector1)
         add_to_faiss_index(image_index, image_embedding1)
         
-        # Perform FAISS text comparison for image 1
         distances, _ = search_faiss_index(text_index, sentence_vector1, k=5)
-        faiss_text_comparison_score = np.mean(distances)
+        faiss_text_comparison_score = distance_to_similarity(distances)
         
         text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
         image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
@@ -137,9 +141,7 @@ def main():
         st.metric(label="Text Similarity", value=f"{text_sim*100:.2f}%")
         st.metric(label="Image Similarity", value=f"{image_sim*100:.2f}%")
         st.metric(label="Total Similarity", value=f"{total_similarity*100:.2f}%")
-        st.metric(label="FAISS Text Comparison", value=f"{(1 - np.sqrt(faiss_text_comparison_score)) * 100:.2f}%")
-
-        # Note: Adjust the FAISS score interpretation as needed
+        st.metric(label="FAISS Text Comparison", value=f"{faiss_text_comparison_score:.2f}%")
 
         save_faiss_index(text_index, "text_index.faiss")
         save_faiss_index(image_index, "image_index.faiss")
