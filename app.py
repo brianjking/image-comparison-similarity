@@ -119,14 +119,14 @@ def extract_text(image_bytes):
     return '\n'.join(text_data)
 
 def main():
-    global index_to_text  # Reference the global variable
     st.title("Duplicate Document Detector")
+    
+    # Initialize or load the FAISS index for text and image embeddings
+    text_index = init_or_load_faiss_index("text_index.faiss", TEXT_EMBEDDING_DIM)
+    image_index = init_or_load_faiss_index("image_index.faiss", IMAGE_EMBEDDING_DIM)
 
     # Load existing index-to-text mapping or initialize it
     load_index_to_text_mapping("index_to_text.json")
-
-    text_index = init_or_load_faiss_index("text_index.faiss", TEXT_EMBEDDING_DIM)
-    image_index = init_or_load_faiss_index("image_index.faiss", IMAGE_EMBEDDING_DIM)
 
     uploaded_file1 = st.file_uploader("Choose the first image...", type=["jpg", "png"])
     uploaded_file2 = st.file_uploader("Choose the second image...", type=["jpg", "png"])
@@ -136,10 +136,16 @@ def main():
         st.image([img_data1, img_data2], caption=['First Image', 'Second Image'], width=300)
 
         image1, image2 = Image.open(io.BytesIO(img_data1)), Image.open(io.BytesIO(img_data2))
+        
+        # Extract text from images using AWS Textract
         text1 = extract_text(img_data1)
         text2 = extract_text(img_data2)
+        
+        # Generate text embeddings
         sentence_vector1 = generate_text_embedding(text1)
         sentence_vector2 = generate_text_embedding(text2)
+        
+        # Generate image embeddings
         image_embedding1 = generate_image_embedding(image1)
         image_embedding2 = generate_image_embedding(image2)
 
@@ -147,22 +153,26 @@ def main():
         next_index_id = str(len(index_to_text))
         add_to_faiss_index(text_index, sentence_vector1, text1, next_index_id)
         
+        # Increment next_index_id for adding the next document
         next_index_id = str(int(next_index_id) + 1)
-        add_to_faiss_index(image_index, image_embedding1, "", next_index_id)  # Assuming you want to track image embeddings differently
+        add_to_faiss_index(image_index, image_embedding1, "Image data or description here", next_index_id)
 
+        # Search the FAISS index for similar documents using Image 1's text embedding
         distances, indices = search_faiss_index(text_index, sentence_vector1, k=5)
-
-        st.write("Top 5 Matching Documents:")
-        for idx in indices[0]:
-            original_text = index_to_text.get(str(idx), "Text not found for index: " + str(idx))
-            st.write(f"Index: {idx}, Original Text: {original_text}")
-
+        
+        # Calculate the FAISS similarity score (average of top matches' similarities)
+        faiss_similarity_score = np.mean(distances[0])
+        
+        # Calculate cosine similarities for text and images
         text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
         image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
+
+        # Weigh the similarities to calculate a total similarity score
         text_weight = 0.8
         image_weight = 0.2
         total_similarity = (text_sim * text_weight) + (image_sim * image_weight)
-
+        
+        # Display extracted text, similarity scores, and FAISS similarity
         with st.expander("Extracted Text from Images"):
             st.text_area("Text from First Image:", text1, height=150)
             st.text_area("Text from Second Image:", text2, height=150)
@@ -171,6 +181,7 @@ def main():
         st.metric(label="Text Similarity", value=f"{text_sim*100:.2f}%")
         st.metric(label="Image Similarity", value=f"{image_sim*100:.2f}%")
         st.metric(label="Total Similarity", value=f"{total_similarity*100:.2f}%")
+        st.metric(label="FAISS Text Similarity", value=f"{faiss_similarity_score*100:.2f}%")
 
         # Save the updated mappings and FAISS indices
         save_index_to_text_mapping("index_to_text.json")
