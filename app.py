@@ -22,13 +22,14 @@ def init_or_load_faiss_index(index_path, embedding_dim):
     return index
 
 def normalize_embeddings(embeddings):
+    # Ensure embeddings is a 2D array. If it's 1D, reshape it to 2D
+    if embeddings.ndim == 1:
+        embeddings = np.expand_dims(embeddings, axis=0)
     faiss.normalize_L2(embeddings)  # Normalize embeddings for cosine similarity
     return embeddings
 
 def add_to_faiss_index(index, embeddings):
     embeddings = normalize_embeddings(embeddings)  # Ensure embeddings are normalized
-    if embeddings.ndim == 1:
-        embeddings = np.expand_dims(embeddings, axis=0)
     index.add(embeddings)
 
 def save_faiss_index(index, index_path):
@@ -123,8 +124,7 @@ def main():
         add_to_faiss_index(image_index, image_embedding1)
         
         distances, _ = search_faiss_index(text_index, sentence_vector1, k=5)
-        # Convert distances to a similarity score, for example, using 1-distance, or another method
-        faiss_text_comparison_score = np.mean(1 - distances)
+        faiss_text_comparison_score = np.mean(1 - distances)  # Assuming distances are normalized
         
         text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
         image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
