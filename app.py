@@ -115,14 +115,15 @@ def extract_text(image_bytes):
     text_data = [item.get('Text', '') for item in response['Blocks'] if item['BlockType'] == 'LINE']
     return '\n'.join(text_data)
 
-
-# Main function including the embedding-to-text mapping feature
 def main():
     st.title("Duplicate Document Detector")
     
     # Initialize or load the FAISS index for text and image embeddings
     text_index = init_or_load_faiss_index("text_index.faiss", TEXT_EMBEDDING_DIM)
     image_index = init_or_load_faiss_index("image_index.faiss", IMAGE_EMBEDDING_DIM)
+    
+    # Load existing index-to-text mapping
+    load_index_to_text_mapping("index_to_text.json")
 
     # File uploaders for the two images to be compared
     uploaded_file1 = st.file_uploader("Choose the first image...", type=["jpg", "png"])
@@ -147,17 +148,22 @@ def main():
         image_embedding1 = generate_image_embedding(image1)
         image_embedding2 = generate_image_embedding(image2)
         
-        # Add embeddings to their respective FAISS indices
-        add_to_faiss_index(text_index, sentence_vector1)
-        add_to_faiss_index(image_index, image_embedding1)
+        # Prepare index_id for new entries
+        next_index_id = str(len(index_to_text))  # Unique ID for each new entry
+
+        # Add embeddings and their texts to their respective FAISS indices
+        add_to_faiss_index(text_index, sentence_vector1, text1, next_index_id)
+        # Increment next_index_id for the next entry
+        next_index_id = str(int(next_index_id) + 1)  # Prepare the next index ID
+        add_to_faiss_index(image_index, image_embedding1, "Image data or description", next_index_id)
         
         # Search the FAISS index for similar documents
         distances, indices = search_faiss_index(text_index, sentence_vector1, k=5)
         
         # Display the original texts for the top matching hits
         st.write("Top 5 Matching Documents:")
-        for idx in indices[0]:  # Loop through the top matching indices
-            original_text = index_to_text.get(str(idx), "Text not found for index: " + str(idx))
+        for idx in indices[0]:
+            original_text = index_to_text.get(str(idx), f"Text not found for index: {idx}")
             st.write(f"Index: {idx}, Original Text: {original_text}")
 
         # Calculate similarity scores
@@ -179,10 +185,11 @@ def main():
         st.metric(label="Image Similarity", value=f"{image_sim*100:.2f}%")
         st.metric(label="Total Similarity", value=f"{total_similarity*100:.2f}%")
 
-        # Save the FAISS indices
+        # Save the updated mappings and FAISS indices
+        save_index_to_text_mapping("index_to_text.json")
         save_faiss_index(text_index, "text_index.faiss")
         save_faiss_index(image_index, "image_index.faiss")
 
-# Entry point for the Streamlit application
 if __name__ == "__main__":
     main()
+
