@@ -30,13 +30,27 @@ def normalize_embeddings(embeddings):
     embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
     faiss.normalize_L2(embeddings)
     return embeddings
-
-def add_to_faiss_index(index, embeddings):
+    
+def add_to_faiss_index(index, embeddings, original_text, index_id):
+    global index_to_text
     embeddings = normalize_embeddings(embeddings)
     index.add(embeddings)
+    # Store the original text with its corresponding index ID
+    index_to_text[str(index_id)] = original_text
+
 
 def save_faiss_index(index, index_path):
     faiss.write_index(index, index_path)
+
+def save_index_to_text_mapping(mapping_path):
+    with open(mapping_path, 'w') as f:
+        json.dump(index_to_text, f)
+
+def load_index_to_text_mapping(mapping_path):
+    global index_to_text
+    if os.path.exists(mapping_path):
+        with open(mapping_path, 'r') as f:
+            index_to_text = json.load(f)
 
 # Search FAISS index and retrieve distances and indices
 def search_faiss_index(index, query_embedding, k=5):
@@ -101,6 +115,7 @@ def extract_text(image_bytes):
     text_data = [item.get('Text', '') for item in response['Blocks'] if item['BlockType'] == 'LINE']
     return '\n'.join(text_data)
 
+
 # Main function including the embedding-to-text mapping feature
 def main():
     st.title("Duplicate Document Detector")
@@ -139,7 +154,11 @@ def main():
         # Search the FAISS index for similar documents
         distances, indices = search_faiss_index(text_index, sentence_vector1, k=5)
         
-        # Assuming the mechanism to map index IDs back to original texts is integrated here
+        # Display the original texts for the top matching hits
+        st.write("Top 5 Matching Documents:")
+        for idx in indices[0]:  # Loop through the top matching indices
+            original_text = index_to_text.get(str(idx), "Text not found for index: " + str(idx))
+            st.write(f"Index: {idx}, Original Text: {original_text}")
 
         # Calculate similarity scores
         text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
