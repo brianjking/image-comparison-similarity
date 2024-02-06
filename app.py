@@ -12,7 +12,7 @@ import faiss
 import os
 
 # Initialize or load FAISS indexes for text and images
-def init_or_load_faiss_index(index_path, embedding_dim=512):
+def init_or_load_faiss_index(index_path, embedding_dim=384):
     if os.path.exists(index_path):
         return faiss.read_index(index_path)
     else:
