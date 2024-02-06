@@ -10,18 +10,20 @@ from efficientnet_pytorch import EfficientNet
 import faiss
 from sklearn.metrics.pairwise import cosine_similarity
 import os
+import json  # For saving and loading the mapping
 
 # Constants for embedding dimensions
 TEXT_EMBEDDING_DIM = 384  # all-MiniLM-L6 model output dimension
 IMAGE_EMBEDDING_DIM = 1280  # EfficientNet-b1 output dimension
 
+# Initialize or load FAISS index and mapping
 def init_or_load_faiss_index(index_path, embedding_dim):
     if os.path.exists(index_path):
         index = faiss.read_index(index_path)
     else:
         index = faiss.IndexFlatIP(embedding_dim)  # Use IndexFlatIP for cosine similarity
     return index
-    
+
 def normalize_embeddings(embeddings):
     if embeddings.ndim == 1:
         embeddings = np.expand_dims(embeddings, axis=0)
@@ -36,6 +38,7 @@ def add_to_faiss_index(index, embeddings):
 def save_faiss_index(index, index_path):
     faiss.write_index(index, index_path)
 
+# Search FAISS index and retrieve distances and indices
 def search_faiss_index(index, query_embedding, k=5):
     query_embedding = normalize_embeddings(np.expand_dims(query_embedding, axis=0))
     distances, indices = index.search(query_embedding, k)
@@ -98,12 +101,15 @@ def extract_text(image_bytes):
     text_data = [item.get('Text', '') for item in response['Blocks'] if item['BlockType'] == 'LINE']
     return '\n'.join(text_data)
 
+# Main function including the embedding-to-text mapping feature
 def main():
     st.title("Duplicate Document Detector")
     
+    # Initialize or load the FAISS index for text and image embeddings
     text_index = init_or_load_faiss_index("text_index.faiss", TEXT_EMBEDDING_DIM)
     image_index = init_or_load_faiss_index("image_index.faiss", IMAGE_EMBEDDING_DIM)
-    
+
+    # File uploaders for the two images to be compared
     uploaded_file1 = st.file_uploader("Choose the first image...", type=["jpg", "png"])
     uploaded_file2 = st.file_uploader("Choose the second image...", type=["jpg", "png"])
 
@@ -111,33 +117,40 @@ def main():
         img_data1, img_data2 = uploaded_file1.read(), uploaded_file2.read()
         st.image([img_data1, img_data2], caption=['First Image', 'Second Image'], width=300)
         
+        # Process the uploaded images
         image1, image2 = Image.open(io.BytesIO(img_data1)), Image.open(io.BytesIO(img_data2))
         
+        # Extract text from images using AWS Textract
         text1 = extract_text(img_data1)
         text2 = extract_text(img_data2)
+        
+        # Generate text embeddings
         sentence_vector1 = generate_text_embedding(text1)
         sentence_vector2 = generate_text_embedding(text2)
         
+        # Generate image embeddings
         image_embedding1 = generate_image_embedding(image1)
         image_embedding2 = generate_image_embedding(image2)
         
+        # Add embeddings to their respective FAISS indices
         add_to_faiss_index(text_index, sentence_vector1)
         add_to_faiss_index(image_index, image_embedding1)
         
+        # Search the FAISS index for similar documents
         distances, indices = search_faiss_index(text_index, sentence_vector1, k=5)
-        faiss_text_comparison_score = np.mean(1 - distances)  # Assuming distances are normalized
         
-        # Display the top 5 matching hits from FAISS index
-        st.write("Top 5 matching document indices:", indices[0])
-        st.write("Corresponding distances:", distances[0])
-        
+        # Assuming the mechanism to map index IDs back to original texts is integrated here
+
+        # Calculate similarity scores
         text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
         image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
         
+        # Weigh the similarities to calculate a total similarity score
         text_weight = 0.8
         image_weight = 0.2
         total_similarity = (text_sim * text_weight) + (image_sim * image_weight)
         
+        # Display extracted text and similarity scores
         with st.expander("Extracted Text from Images"):
             st.text_area("Text from First Image:", text1, height=150)
             st.text_area("Text from Second Image:", text2, height=150)
@@ -146,10 +159,11 @@ def main():
         st.metric(label="Text Similarity", value=f"{text_sim*100:.2f}%")
         st.metric(label="Image Similarity", value=f"{image_sim*100:.2f}%")
         st.metric(label="Total Similarity", value=f"{total_similarity*100:.2f}%")
-        st.metric(label="FAISS Text Comparison", value=f"{faiss_text_comparison_score*100:.2f}%")
 
+        # Save the FAISS indices
         save_faiss_index(text_index, "text_index.faiss")
         save_faiss_index(image_index, "image_index.faiss")
 
+# Entry point for the Streamlit application
 if __name__ == "__main__":
     main()
