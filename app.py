@@ -8,9 +8,32 @@ import requests
 import torchvision.transforms as transforms
 import torch
 from efficientnet_pytorch import EfficientNet
-import time
+import faiss
+import os
 
-def split_text(text, max_length=1024):  # Rough estimate for 512 tokens
+# Initialize or load FAISS indexes for text and images
+def init_or_load_faiss_index(index_path, embedding_dim=512):
+    if os.path.exists(index_path):
+        return faiss.read_index(index_path)
+    else:
+        index = faiss.IndexFlatL2(embedding_dim)
+        return index
+
+def add_to_faiss_index(index, embeddings):
+    if embeddings is not None:
+        # Ensure embeddings is a 2D array even for a single embedding
+        if embeddings.ndim == 1:
+            embeddings = np.expand_dims(embeddings, axis=0)
+        index.add(embeddings.astype('float32'))
+
+def save_faiss_index(index, index_path):
+    faiss.write_index(index, index_path)
+
+def search_in_faiss_index(index, query_embedding, k=1):
+    D, I = index.search(np.array([query_embedding]).astype('float32'), k)
+    return D, I
+
+def split_text(text, max_length=1024):
     """Splits the text into chunks that are at most `max_length` characters long."""
     return [text[i:i+max_length] for i in range(0, len(text), max_length)]
 
@@ -70,6 +93,11 @@ def extract_text(image_bytes):
 
 def main():
     st.title("Duplicate Document Detector")
+    
+    # Initialize or load FAISS indexes
+    text_index = init_or_load_faiss_index("text_index.faiss")
+    image_index = init_or_load_faiss_index("image_index.faiss")
+    
     uploaded_file1 = st.file_uploader("Choose the first image...", type=["jpg", "png"])
     uploaded_file2 = st.file_uploader("Choose the second image...", type=["jpg", "png"])
 
@@ -78,25 +106,33 @@ def main():
         st.image([img_data1, img_data2], caption=['First Image', 'Second Image'], width=300)
         image1, image2 = Image.open(io.BytesIO(img_data1)), Image.open(io.BytesIO(img_data2))
         
+        # Extract and process text from images
         text1 = extract_text(img_data1)
         text2 = extract_text(img_data2)
-        
         sentence_vector1 = generate_text_embedding(text1)
         sentence_vector2 = generate_text_embedding(text2)
         
-        if sentence_vector1 is None or sentence_vector2 is None:
-            return  # Stop further execution if embedding generation failed
-        
+        # Generate and process image embeddings
         image_embedding1 = generate_image_embedding(image1)
         image_embedding2 = generate_image_embedding(image2)
-
-        text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
+        
+        # Add embeddings to FAISS indexes and save
+        add_to_faiss_index(text_index, sentence_vector1 if sentence_vector1 is not None else np.zeros((1, 512)))
+        add_to_faiss_index(text_index, sentence_vector2 if sentence_vector2 is not None else np.zeros((1, 512)))
+        add_to_faiss_index(image_index, image_embedding1)
+        add_to_faiss_index(image_index, image_embedding2)
+        save_faiss_index(text_index, "text_index.faiss")
+        save_faiss_index(image_index, "image_index.faiss")
+        
+        # Calculate similarity scores
+        text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0] if sentence_vector1 is not None and sentence_vector2 is not None else 0
         image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
-
+        
+        # Weighing the similarity scores
         text_weight = 0.8
         image_weight = 0.2
         total_similarity = (text_sim * text_weight) + (image_sim * image_weight)
-
+        
         with st.expander("Extracted Text from Images"):
             st.text_area("Text from First Image:", text1, height=150)
             st.text_area("Text from Second Image:", text2, height=150)
