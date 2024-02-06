@@ -20,11 +20,13 @@ def init_or_load_faiss_index(index_path, embedding_dim):
     else:
         index = faiss.IndexFlatIP(embedding_dim)  # Use IndexFlatIP for cosine similarity
     return index
-
+    
 def normalize_embeddings(embeddings):
     # Ensure embeddings is a 2D array. If it's 1D, reshape it to 2D
     if embeddings.ndim == 1:
         embeddings = np.expand_dims(embeddings, axis=0)
+    # Ensure embeddings are of type float32 and are contiguous
+    embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
     faiss.normalize_L2(embeddings)  # Normalize embeddings for cosine similarity
     return embeddings
 
