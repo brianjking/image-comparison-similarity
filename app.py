@@ -8,6 +8,7 @@ import torchvision.transforms as transforms
 import torch
 from efficientnet_pytorch import EfficientNet
 import faiss
+from sklearn.metrics.pairwise import cosine_similarity
 import os
 
 # Constants for embedding dimensions
