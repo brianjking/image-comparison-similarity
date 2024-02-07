@@ -160,8 +160,8 @@ def main():
              if idx == -1 or distance < 0:  # Adjust based on your FAISS configuration
                 st.write("No valid matching documents found or index is empty.")
              else:
-            original_text = index_to_text.get(str(idx), "Text not found for index: " + str(idx))
-            st.write(f"Original Text: \"{original_text}\" | FAISS Similarity: {max(0, distance)*100:.2f}%")
+                original_text = index_to_text.get(str(idx), "Text not found for index: " + str(idx))
+                st.write(f"Original Text: \"{original_text}\" | FAISS Similarity: {max(0, distance)*100:.2f}%")
         
        
         text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
