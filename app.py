@@ -127,6 +127,9 @@ def main():
 
      # Print the number of embeddings in the text index
     print("Number of embeddings in the text index:", text_index.ntotal)
+    print("FAISS index is empty:", text_index.is_trained)
+    print("Number of embeddings in the text index:", text_index.ntotal)
+
     
 
     # Ensure the index_to_text mapping is loaded
