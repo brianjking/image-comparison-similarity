@@ -125,13 +125,6 @@ def main():
     text_index = init_or_load_faiss_index("text_index.faiss", TEXT_EMBEDDING_DIM)
     image_index = init_or_load_faiss_index("image_index.faiss", IMAGE_EMBEDDING_DIM)
 
-     # Print the number of embeddings in the text index
-    print("Number of embeddings in the text index:", text_index.ntotal)
-    print("FAISS index is empty:", text_index.is_trained)
-    print("Number of embeddings in the text index:", text_index.ntotal)
-
-    
-
     # Ensure the index_to_text mapping is loaded
     load_index_to_text_mapping("index_to_text.json")
 
@@ -152,21 +145,19 @@ def main():
         image_embedding1 = generate_image_embedding(image1)
         image_embedding2 = generate_image_embedding(image2)
 
+        next_index_id = str(len(index_to_text))  # Prepare unique index ID
+        add_to_faiss_index(text_index, sentence_vector1, text1, next_index_id)
+        
         # Perform the FAISS search with Image 1's text embedding
         distances, indices = search_faiss_index(text_index, sentence_vector1, k=5)
-        print("Indices returned by FAISS search:", indices)
-        print("Distances (similarities) returned by FAISS search:", distances)
         
-        # Display the original texts and FAISS similarity scores inside an expander
-        with st.expander("Top 5 Matching Documents from FAISS Index:"):
-          for idx, distance in zip(indices[0], distances[0]):
-             if idx == -1 or distance < 0:  # Adjust based on your FAISS configuration
-                st.write("No valid matching documents found or index is empty.")
-             else:
-                original_text = index_to_text.get(str(idx), "Text not found for index: " + str(idx))
-                st.write(f"Original Text: \"{original_text}\" | FAISS Similarity: {max(0, distance)*100:.2f}%")
-        
-       
+        # Display the original texts and FAISS similarity scores
+        st.write("Top 5 Matching Documents from FAISS Index:")
+        for idx, distance in zip(indices[0], distances[0]):
+            original_text = index_to_text.get(str(idx), "Text not found for index: " + str(idx))
+            # FAISS similarity score, assuming distance is similarity for IndexFlatIP
+            st.write(f"Original Text: \"{original_text}\" | FAISS Similarity: {distance*100:.2f}%")
+
         text_sim = cosine_similarity([sentence_vector1], [sentence_vector2])[0][0]
         image_sim = cosine_similarity([image_embedding1], [image_embedding2])[0][0]
         text_weight = 0.8
